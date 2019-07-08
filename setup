@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# check for sudo
+if [[ $(/usr/bin/id -u) -ne 0 ]]; then
+    echo "Please run this script using sudo."
+    exit
+fi
+
+# update apt and install programs
+apt-get update
+apt-get upgrade -y
+apt-get install -y man-db tree git btrfs-progs nfs-kernel-server
+
+# add tjc user
+tmpuser="tmpuser" # this is the user used to create the VM and should be removed
+username="tjc"
+groupadd ${username}
+sh -c "useradd ${username} -s /bin/bash -g ${username} -M"
+mkdir /home/${username}
+mkdir /home/${username}/.ssh
+cp /home/${tmpuser}/.bashrc /home/${username}/
+cp /home/${tmpuser}/.bash_logout /home/${username}/
+cp /home/${tmpuser}/.profile /home/${username}/
+cp /home/${tmpuser}/.ssh/authorized_keys /home/${username}/.ssh/
+cp /home/${tmpuser}/setup_nfs_server /home/${username}/
+chown -R ${username}:${username} /home/${username}
+echo "${username} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/${username}
+
+# set up btrfs
+echo "Setting up btrfs filesystem ..."
+mkfs.btrfs -d single /dev/disk/azure/scsi1/lun0 /dev/disk/azure/scsi1/lun1 
+mkdir -p /mnt/ooicloud
+chown 1000:1000 /mnt/ooicloud
+sh -c "printf '/dev/disk/azure/scsi1/lun0\t\t\t/mnt/ooicloud\tbtrfs\tdefaults\t0\t0\n' >> /etc/fstab"
+mount -a
+echo "done."
+
+# set up nfs
+echo "Setting up NFS share ..."
+sh -c "printf '/mnt/ooicloud\t10.0.0.0/16(rw,fsid=0,async,no_subtree_check,no_auth_nlm,insecure,no_root_squash)\n' >> /etc/exports"
+exportfs -ra
+echo "done."
